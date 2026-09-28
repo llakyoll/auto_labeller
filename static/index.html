@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YOLO Veri Toplayıcı</title>
+  <style>
+    :root{font-family:Inter,system-ui,-apple-system,sans-serif;color:#e8edf3;background:#10151c}
+    *{box-sizing:border-box} body{margin:0} header{padding:20px 28px;border-bottom:1px solid #283341;display:flex;justify-content:space-between;align-items:center}
+    h1{font-size:21px;margin:0} h2{font-size:17px;margin:0 0 15px} small,.muted{color:#99a9ba} main{display:grid;grid-template-columns:350px minmax(0,1fr);gap:20px;max-width:1500px;margin:auto;padding:24px}
+    .panel{background:#19222c;border:1px solid #2c3947;border-radius:14px;padding:20px;margin-bottom:20px;min-width:0}
+    label{display:block;font-size:13px;color:#afbdca;margin:14px 0 6px} input{width:100%;background:#101923;border:1px solid #405061;border-radius:8px;padding:11px;color:#eef3f6;font:inherit}
+    input:focus{outline:2px solid #3b91a2} .row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
+    button{background:#36a6a5;color:#081515;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}button:hover{filter:brightness(1.1)}button.secondary{background:#36485a;color:#e7edf3}button.danger{background:#6b3439;color:#fff}button:disabled{opacity:.5;cursor:not-allowed}
+    .actions{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}.status{padding:10px 12px;border-radius:8px;background:#243340;font-size:13px;white-space:pre-wrap;word-break:break-word}.status.error{background:#5a2830;color:#ffd7dc}
+    canvas{width:100%;height:auto;display:block;border-radius:8px;background:#0b1117}.preview{min-height:300px;display:flex;align-items:center;justify-content:center;background:#0b1117;border-radius:8px;overflow:hidden}
+    .preview canvas{max-height:65vh;object-fit:contain}.hint{line-height:1.5;font-size:13px;color:#9eacba}
+    .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}.candidate{border:1px solid #354352;border-radius:10px;padding:12px;background:#151d26}.candidate h3{font-size:13px;margin:0 0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.candidate .box-list{margin:10px 0;max-height:120px;overflow:auto}.candidate .box-list label{margin:5px 0;display:flex;align-items:center;gap:6px;color:#dce4ec}.candidate input[type=checkbox]{width:auto;margin:0}.candidate .actions{margin-top:10px}
+    .class-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:8px;max-height:180px;overflow:auto;margin-top:10px}.class-list label{margin:0;display:flex;align-items:center;gap:8px;background:#101923;border:1px solid #354759;border-radius:8px;padding:8px;color:#dce4ec;cursor:pointer;overflow-wrap:anywhere}.class-list input{width:auto;margin:0}
+    @media(max-width:900px){main{display:block;padding:14px}header{padding:17px} .panel{padding:16px}}
+  </style>
+</head>
+<body>
+  <header><h1>YOLO Veri Toplayıcı</h1><small>Yerel RTSP · İnsan onayı · YOLO veri seti</small></header>
+  <main>
+    <section>
+      <div class="panel">
+        <h2>Kaynak ve model</h2>
+        <label for="url">RTSP adresi</label><input id="url" placeholder="rtsp://kamera/adres" autocomplete="off">
+        <label for="model">YOLO .pt modeli</label>
+        <div class="row"><input id="model" value="/home/waky/Projeler/ocr_project/models/license-plate-finetune-v1l.pt"><button id="choose-model" class="secondary" style="flex:0 0 auto">Dosya seç</button></div>
+        <input id="model-file" type="file" accept=".pt" hidden>
+        <p id="model-upload" class="hint">Dosya seç düğmesi cihazındaki klasörleri açar. Seçilen model bu projeye kopyalanır.</p>
+        <div class="row" style="align-items:center"><label style="flex:1;margin:0">Toplanacak sınıflar</label><button id="load-classes" class="secondary" style="flex:0 0 auto">Sınıfları göster</button><button id="select-all" class="secondary" style="flex:0 0 auto">Tümünü seç</button></div>
+        <div id="class-list" class="class-list"><span class="muted">Model sınıfları yükleniyor…</span></div>
+        <div class="row"><div><label for="confidence">Güven eşiği</label><input id="confidence" type="number" min="0.01" max="1" step="0.01" value="0.35"></div><div><label for="interval">Çıkarım aralığı (sn)</label><input id="interval" type="number" min="0.2" max="60" step="0.1" value="2"></div></div>
+        <label for="collect_interval">Otomatik aday aralığı (sn)</label><input id="collect_interval" type="number" min="1" max="3600" step="1" value="10">
+        <div class="actions"><button id="start">Bağlan ve başlat</button><button id="stop" class="secondary">Durdur</button></div>
+      </div>
+      <div class="panel"><h2>Durum</h2><div id="status" class="status">Hazır</div><p class="hint">Tahmin görülen kareler aday listesine eklenir. Veri setine yalnızca onayladıkların yazılır. Model kutularını onaydan önce seçip çıkarabilirsin.</p></div>
+    </section>
+    <section>
+      <div class="panel"><div class="row" style="align-items:center"><h2 style="flex:1">Canlı işlenen kare</h2><button id="capture" class="secondary">Bu kareyi aday yap</button></div><div class="preview"><canvas id="live"></canvas></div><p id="live-info" class="hint">Kamera bekleniyor</p></div>
+      <div class="panel"><div class="row" style="align-items:center"><h2 style="flex:1">Onay bekleyenler <span id="count"></span></h2><button id="refresh" class="secondary">Yenile</button></div><div id="candidates" class="list"><span class="muted">Henüz aday yok.</span></div></div>
+    </section>
+  </main>
+  <script>
+    const $ = id => document.getElementById(id);
+    const api = async (path, data) => {
+      const response = await fetch(path, data === undefined ? undefined : {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'İşlem başarısız');
+      return result;
+    };
+    const message = (text, error=false) => { $('status').textContent=text; $('status').className='status'+(error?' error':''); };
+    function draw(canvas, url, detections) {
+      const image = new Image();
+      image.onload = () => {
+        canvas.width=image.naturalWidth; canvas.height=image.naturalHeight;
+        const ctx=canvas.getContext('2d'); ctx.drawImage(image,0,0);
+        ctx.lineWidth=Math.max(2,image.width/350); ctx.font=`${Math.max(16,image.width/55)}px sans-serif`;
+        detections.forEach(d => {
+          const [x,y,w,h]=d.xywhn; const left=(x-w/2)*image.width, top=(y-h/2)*image.height;
+          ctx.strokeStyle='#36f1b7'; ctx.fillStyle='#36f1b7'; ctx.strokeRect(left,top,w*image.width,h*image.height);
+          const label=`${d.class_name} ${Math.round(d.confidence*100)}%`;
+          const textWidth=ctx.measureText(label).width+10;
+          ctx.fillRect(left,Math.max(0,top-26),textWidth,26);
+          ctx.fillStyle='#071714'; ctx.fillText(label,left+5,Math.max(19,top-6));
+        });
+      };
+      image.src=url;
+    }
+    let lastSequence=0, candidateIds='', classModelPath='';
+    async function loadClasses(){
+      const modelPath=$('model').value.trim(), host=$('class-list');
+      if(!modelPath){host.textContent='Önce model seç.';classModelPath='';return false;}
+      host.textContent='Sınıflar okunuyor…';
+      try{
+        const options=await api('/api/models/classes',{model_path:modelPath});
+        if($('model').value.trim()!==modelPath)return false;
+        host.replaceChildren();
+        options.forEach(option=>{
+          const label=document.createElement('label'),check=document.createElement('input');
+          check.type='checkbox';check.value=option.id;check.checked=true;
+          label.append(check,document.createTextNode(option.name));host.append(label);
+        });
+        classModelPath=modelPath;
+        return true;
+      }catch(e){host.textContent=e.message;classModelPath='';return false;}
+    }
+    async function status() {
+      try {
+        const data=await api('/api/status');
+        if(data.inference_error || data.camera_error) message(data.inference_error || data.camera_error,true);
+        else message(data.running ? `Bağlı · gelen kare ${data.frame_sequence} · model ${data.model}` : 'Hazır');
+        if(data.result && data.result.sequence!==lastSequence) {
+          lastSequence=data.result.sequence;
+          draw($('live'),`/api/frame.jpg?t=${Date.now()}`,data.result.detections);
+          $('live-info').textContent=`Kare ${lastSequence} · ${data.result.detections.length} tespit`;
+        }
+      } catch(e) {message(e.message,true);}
+    }
+    async function candidates(force=false) {
+      try {
+        const rows=await api('/api/candidates');
+        $('count').textContent=`(${rows.length})`;
+        const ids=rows.map(r=>r.id).join(',');
+        if(!force && ids===candidateIds) return;
+        candidateIds=ids;
+        const host=$('candidates'); host.replaceChildren();
+        if(!rows.length) {const empty=document.createElement('span'); empty.className='muted'; empty.textContent='Henüz aday yok.';host.append(empty);return;}
+        for(const item of rows) {
+          const card=document.createElement('div');card.className='candidate';
+          const title=document.createElement('h3');title.textContent=item.id;card.append(title);
+          const canvas=document.createElement('canvas');card.append(canvas);
+          draw(canvas,`/api/candidates/${item.id}.jpg`,item.detections);
+          const list=document.createElement('div');list.className='box-list';
+          item.detections.forEach((d,i)=>{const label=document.createElement('label');const check=document.createElement('input');check.type='checkbox';check.checked=true;check.value=i;label.append(check,document.createTextNode(`${d.class_name} · ${Math.round(d.confidence*100)}%`));list.append(label);});
+          if(!item.detections.length) {list.textContent='Bu karede tespit yok.';list.classList.add('muted');}
+          card.append(list);
+          const actions=document.createElement('div');actions.className='actions';
+          const approve=document.createElement('button');approve.textContent='Onayla';
+          approve.onclick=async()=>{try{const selected=[...list.querySelectorAll('input:checked')].map(x=>Number(x.value));await api(`/api/candidates/${item.id}/approve`,{selected});await candidates(true);}catch(e){message(e.message,true);}};
+          const reject=document.createElement('button');reject.textContent='Reddet';reject.className='danger';
+          reject.onclick=async()=>{try{await api(`/api/candidates/${item.id}/reject`,{});await candidates(true);}catch(e){message(e.message,true);}};
+          actions.append(approve,reject);card.append(actions);host.append(card);
+        }
+      } catch(e) {message(e.message,true);}
+    }
+    $('start').onclick=async()=>{try{
+      if(classModelPath!==$('model').value.trim() && !(await loadClasses()))throw new Error('Model sınıfları okunamadı');
+      const selectedClasses=[...$('class-list').querySelectorAll('input:checked')].map(input=>Number(input.value));
+      if(!selectedClasses.length)throw new Error('En az bir sınıf seç');
+      message('Model ve kamera açılıyor…');
+      const info=await api('/api/start',{url:$('url').value,model_path:$('model').value,selected_classes:selectedClasses,confidence:Number($('confidence').value),interval:Number($('interval').value),collect_interval:Number($('collect_interval').value)});
+      message(`Başlatıldı · ${info.codec.toUpperCase()} · ${Object.values(info.classes).join(', ')}`);
+    }catch(e){message(e.message,true);}};
+    $('model').oninput=()=>{classModelPath='';$('class-list').textContent='Yeni model için sınıfları göster.';};
+    $('load-classes').onclick=loadClasses;
+    $('select-all').onclick=()=>[...$('class-list').querySelectorAll('input')].forEach(input=>input.checked=true);
+    $('choose-model').onclick=()=>$('model-file').click();
+    $('model-file').onchange=async()=>{
+      const file=$('model-file').files[0];
+      if(!file)return;
+      const note=$('model-upload'), button=$('choose-model');
+      if(!file.name.toLowerCase().endsWith('.pt') || file.size>2*1024*1024*1024){note.textContent='En fazla 2 GB büyüklüğünde bir .pt dosyası seç.';return;}
+      button.disabled=true;note.textContent=`${file.name} aktarılıyor…`;
+      try{
+        const response=await fetch('/api/models/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Model-Name':encodeURIComponent(file.name)},body:file});
+        const result=await response.json();
+        if(!response.ok)throw new Error(result.error||'Model aktarılamadı');
+        $('model').value=result.path;note.textContent=`Seçildi: ${result.name}`;
+        await loadClasses();
+      }catch(e){note.textContent=e.message;}
+      finally{button.disabled=false;$('model-file').value='';}
+    };
+    $('stop').onclick=async()=>{try{await api('/api/stop',{});message('Durduruldu');}catch(e){message(e.message,true);}};
+    $('capture').onclick=async()=>{try{await api('/api/capture',{});await candidates(true);}catch(e){message(e.message,true);}};
+    $('refresh').onclick=()=>candidates(true);
+    status(); candidates(); loadClasses(); setInterval(status,1500); setInterval(()=>candidates(),5000);
+  </script>
+</body>
+</html>
