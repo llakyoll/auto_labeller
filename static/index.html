@@ -14,7 +14,7 @@
     button{background:#36a6a5;color:#081515;border:0;border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}button:hover{filter:brightness(1.1)}button.secondary{background:#36485a;color:#e7edf3}button.danger{background:#6b3439;color:#fff}button:disabled{opacity:.5;cursor:not-allowed}
     .actions{display:flex;gap:8px;margin-top:18px;flex-wrap:wrap}.status{padding:10px 12px;border-radius:8px;background:#243340;font-size:13px;white-space:pre-wrap;word-break:break-word}.status.error{background:#5a2830;color:#ffd7dc}
     canvas{width:100%;height:auto;display:block;border-radius:8px;background:#0b1117}.preview{min-height:300px;display:flex;align-items:center;justify-content:center;background:#0b1117;border-radius:8px;overflow:hidden}
-    .preview canvas{max-height:65vh;object-fit:contain}.hint{line-height:1.5;font-size:13px;color:#9eacba}
+    .preview canvas{width:auto;max-width:100%;max-height:65vh;height:auto;object-fit:contain;touch-action:none}.hint{line-height:1.5;font-size:13px;color:#9eacba}
     .list{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}.candidate{border:1px solid #354352;border-radius:10px;padding:12px;background:#151d26}.candidate h3{font-size:13px;margin:0 0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.candidate .box-list{margin:10px 0;max-height:120px;overflow:auto}.candidate .box-list label{margin:5px 0;display:flex;align-items:center;gap:6px;color:#dce4ec}.candidate input[type=checkbox]{width:auto;margin:0}.candidate .actions{margin-top:10px}
     .class-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:8px;max-height:180px;overflow:auto;margin-top:10px}.class-list label{margin:0;display:flex;align-items:center;gap:8px;background:#101923;border:1px solid #354759;border-radius:8px;padding:8px;color:#dce4ec;cursor:pointer;overflow-wrap:anywhere}.class-list input{width:auto;margin:0}
     @media(max-width:900px){main{display:block;padding:14px}header{padding:17px} .panel{padding:16px}}
@@ -35,12 +35,12 @@
         <div id="class-list" class="class-list"><span class="muted">Model sınıfları yükleniyor…</span></div>
         <div class="row"><div><label for="confidence">Güven eşiği</label><input id="confidence" type="number" min="0.01" max="1" step="0.01" value="0.35"></div><div><label for="interval">Çıkarım aralığı (sn)</label><input id="interval" type="number" min="0.2" max="60" step="0.1" value="2"></div></div>
         <label for="collect_interval">Otomatik aday aralığı (sn)</label><input id="collect_interval" type="number" min="1" max="3600" step="1" value="10">
-        <div class="actions"><button id="start">Bağlan ve başlat</button><button id="stop" class="secondary">Durdur</button></div>
+        <div class="actions"><button id="connect" class="secondary">Kameraya bağlan</button><button id="start" disabled>Toplamaya başla</button><button id="stop" class="secondary">Durdur</button></div>
       </div>
       <div class="panel"><h2>Durum</h2><div id="status" class="status">Hazır</div><p class="hint">Tahmin görülen kareler aday listesine eklenir. Veri setine yalnızca onayladıkların yazılır. Model kutularını onaydan önce seçip çıkarabilirsin.</p></div>
     </section>
     <section>
-      <div class="panel"><div class="row" style="align-items:center"><h2 style="flex:1">Canlı işlenen kare</h2><button id="capture" class="secondary">Bu kareyi aday yap</button></div><div class="preview"><canvas id="live"></canvas></div><p id="live-info" class="hint">Kamera bekleniyor</p></div>
+      <div class="panel"><div class="row" style="align-items:center"><h2 style="flex:1">Kamera ve ROI önizlemesi</h2><button id="capture" class="secondary" disabled>Bu kareyi aday yap</button></div><div class="preview"><canvas id="live"></canvas></div><p id="live-info" class="hint">Kameraya bağlan, görüntü üzerinde ROI köşelerini sırayla tıkla.</p><div class="actions"><button id="finish-roi" class="secondary" disabled>ROI’yi tamamla</button><button id="clear-roi" class="secondary" disabled>ROI’yi sıfırla</button></div></div>
       <div class="panel"><div class="row" style="align-items:center"><h2 style="flex:1">Onay bekleyenler <span id="count"></span></h2><button id="refresh" class="secondary">Yenile</button></div><div id="candidates" class="list"><span class="muted">Henüz aday yok.</span></div><div class="actions" style="align-items:center"><button id="newer" class="secondary">Daha yeni</button><span id="page-info" class="muted">Sayfa 1</span><button id="older" class="secondary">Daha eski</button></div></div>
     </section>
   </main>
@@ -53,24 +53,55 @@
       return result;
     };
     const message = (text, error=false) => { $('status').textContent=text; $('status').className='status'+(error?' error':''); };
-    function draw(canvas, url, detections) {
-      const image = new Image();
-      image.onload = () => {
-        canvas.width=image.naturalWidth; canvas.height=image.naturalHeight;
-        const ctx=canvas.getContext('2d'); ctx.drawImage(image,0,0);
-        ctx.lineWidth=Math.max(2,image.width/350); ctx.font=`${Math.max(16,image.width/55)}px sans-serif`;
-        detections.forEach(d => {
-          const [x,y,w,h]=d.xywhn; const left=(x-w/2)*image.width, top=(y-h/2)*image.height;
-          ctx.strokeStyle='#36f1b7'; ctx.fillStyle='#36f1b7'; ctx.strokeRect(left,top,w*image.width,h*image.height);
-          const label=`${d.class_name} ${Math.round(d.confidence*100)}%`;
-          const textWidth=ctx.measureText(label).width+10;
-          ctx.fillRect(left,Math.max(0,top-26),textWidth,26);
-          ctx.fillStyle='#071714'; ctx.fillText(label,left+5,Math.max(19,top-6));
-        });
+    let lastFrameKey='', candidateIds='', candidatePage=0, classModelPath='';
+    let liveImage=null, liveDetections=[], isConnected=false, isRunning=false;
+    let roiPoints=[], roiClosed=false, roiCursor=null;
+    function paintBoxes(ctx,image,detections){
+      ctx.lineWidth=Math.max(2,image.width/350);ctx.font=`${Math.max(16,image.width/55)}px sans-serif`;
+      detections.forEach(d=>{
+        const [x,y,w,h]=d.xywhn,left=(x-w/2)*image.width,top=(y-h/2)*image.height;
+        ctx.strokeStyle='#36f1b7';ctx.fillStyle='#36f1b7';ctx.strokeRect(left,top,w*image.width,h*image.height);
+        const label=`${d.class_name} ${Math.round(d.confidence*100)}%`,textWidth=ctx.measureText(label).width+10;
+        ctx.fillRect(left,Math.max(0,top-26),textWidth,26);
+        ctx.fillStyle='#071714';ctx.fillText(label,left+5,Math.max(19,top-6));
+      });
+    }
+    function paintLive(){
+      if(!liveImage)return;
+      const canvas=$('live');canvas.width=liveImage.naturalWidth;canvas.height=liveImage.naturalHeight;
+      const ctx=canvas.getContext('2d');ctx.drawImage(liveImage,0,0);
+      paintBoxes(ctx,liveImage,liveDetections);
+      if(isRunning||!roiPoints.length)return;
+      ctx.beginPath();
+      roiPoints.forEach(([x,y],i)=>i ? ctx.lineTo(x*canvas.width,y*canvas.height) : ctx.moveTo(x*canvas.width,y*canvas.height));
+      if(roiClosed){ctx.closePath();ctx.fillStyle='rgba(54,241,183,.2)';ctx.fill();}
+      else if(roiCursor){ctx.lineTo(roiCursor[0]*canvas.width,roiCursor[1]*canvas.height);}
+      ctx.strokeStyle='#36f1b7';ctx.lineWidth=Math.max(3,canvas.width/300);ctx.stroke();
+      roiPoints.forEach(([x,y],i)=>{ctx.beginPath();ctx.arc(x*canvas.width,y*canvas.height,Math.max(5,canvas.width/180),0,Math.PI*2);ctx.fillStyle=i===0?'#ffe384':'#36f1b7';ctx.fill();});
+    }
+    function draw(canvas,url,detections,live=false){
+      const image=new Image();
+      image.onload=()=>{
+        if(live){liveImage=image;liveDetections=detections;paintLive();return;}
+        canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+        const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);paintBoxes(ctx,image,detections);
       };
       image.src=url;
     }
-    let lastSequence=0, candidateIds='', candidatePage=0, classModelPath='';
+    function updateControls(){
+      $('connect').disabled=isRunning;
+      $('start').disabled=!isConnected||isRunning||!roiClosed;
+      $('stop').disabled=!isConnected;
+      $('capture').disabled=!isRunning;
+      $('finish-roi').disabled=!isConnected||isRunning||roiClosed||roiPoints.length<3;
+      $('clear-roi').disabled=!isConnected||isRunning||!roiPoints.length;
+      $('live').style.cursor=isConnected&&!isRunning&&!roiClosed?'crosshair':'default';
+    }
+    function canvasPoint(event){
+      const rect=$('live').getBoundingClientRect();
+      return [Math.min(1,Math.max(0,(event.clientX-rect.left)/rect.width)),
+              Math.min(1,Math.max(0,(event.clientY-rect.top)/rect.height))];
+    }
     async function loadClasses(){
       const modelPath=$('model').value.trim(), host=$('class-list');
       if(!modelPath){host.textContent='Önce model seç.';classModelPath='';return false;}
@@ -91,12 +122,21 @@
     async function status() {
       try {
         const data=await api('/api/status');
+        isConnected=data.connected;isRunning=data.running;
+        if(isRunning&&data.roi.length&&!roiClosed){roiPoints=data.roi;roiClosed=true;}
+        updateControls();
         if(data.inference_error || data.camera_error) message(data.inference_error || data.camera_error,true);
-        else message(data.running ? `Bağlı · gelen kare ${data.frame_sequence} · model ${data.model}` : 'Hazır');
-        if(data.result && data.result.sequence!==lastSequence) {
-          lastSequence=data.result.sequence;
-          draw($('live'),`/api/frame.jpg?t=${Date.now()}`,data.result.detections);
-          $('live-info').textContent=`Kare ${lastSequence} · ${data.result.detections.length} tespit`;
+        else message(isRunning ? `Toplama sürüyor · gelen kare ${data.frame_sequence} · model ${data.model}`
+                  : isConnected ? 'Kamera bağlı · çokgen ROI köşelerini tıkla ve tamamla' : 'Hazır');
+        if(data.result){
+          const key=`${isRunning}:${data.result.sequence}`;
+          if(key!==lastFrameKey){
+            lastFrameKey=key;
+            draw($('live'),`/api/frame.jpg?t=${Date.now()}`,data.result.detections,true);
+            $('live-info').textContent=isRunning
+              ? `ROI karesi ${data.result.sequence} · ${data.result.detections.length} tespit`
+              : `Kamera karesi ${data.result.sequence} · Köşeleri tıkla, sonra ROI’yi tamamla`;
+          }
         }
       } catch(e) {message(e.message,true);}
     }
@@ -132,14 +172,39 @@
         }
       } catch(e) {message(e.message,true);}
     }
+    $('connect').onclick=async()=>{try{
+      message('Kameraya bağlanılıyor…');
+      const info=await api('/api/connect',{url:$('url').value});
+      roiPoints=[];roiClosed=false;roiCursor=null;lastFrameKey='';liveImage=null;
+      isConnected=true;isRunning=false;updateControls();
+      message(`Kamera bağlandı · ${info.codec.toUpperCase()} · ROI köşelerini seç`);
+    }catch(e){message(e.message,true);}};
     $('start').onclick=async()=>{try{
+      if(!roiClosed)throw new Error('Önce çokgen ROI’yi tamamla');
       if(classModelPath!==$('model').value.trim() && !(await loadClasses()))throw new Error('Model sınıfları okunamadı');
       const selectedClasses=[...$('class-list').querySelectorAll('input:checked')].map(input=>Number(input.value));
       if(!selectedClasses.length)throw new Error('En az bir sınıf seç');
-      message('Model ve kamera açılıyor…');
-      const info=await api('/api/start',{url:$('url').value,model_path:$('model').value,selected_classes:selectedClasses,confidence:Number($('confidence').value),interval:Number($('interval').value),collect_interval:Number($('collect_interval').value)});
-      message(`Başlatıldı · ${info.codec.toUpperCase()} · ${Object.values(info.classes).join(', ')}`);
+      message('Model açılıyor, toplama başlıyor…');
+      const info=await api('/api/start',{url:$('url').value,model_path:$('model').value,roi:roiPoints,selected_classes:selectedClasses,confidence:Number($('confidence').value),interval:Number($('interval').value),collect_interval:Number($('collect_interval').value)});
+      isRunning=true;lastFrameKey='';updateControls();
+      message(`Toplama başladı · ${Object.values(info.classes).join(', ')}`);
     }catch(e){message(e.message,true);}};
+    $('live').onclick=event=>{
+      if(!isConnected||isRunning||roiClosed||!liveImage)return;
+      roiPoints.push(canvasPoint(event));roiCursor=null;paintLive();updateControls();
+      $('live-info').textContent=`${roiPoints.length} köşe seçildi · En az 3 köşeden sonra ROI’yi tamamla`;
+    };
+    $('live').onpointermove=event=>{if(isConnected&&!isRunning&&!roiClosed&&roiPoints.length){roiCursor=canvasPoint(event);paintLive();}};
+    $('live').onpointerleave=()=>{roiCursor=null;paintLive();};
+    $('finish-roi').onclick=async()=>{
+      if(roiPoints.length<3)return;
+      try{
+        await api('/api/roi/validate',{roi:roiPoints});
+        roiClosed=true;roiCursor=null;paintLive();updateControls();
+        $('live-info').textContent=`Çokgen ROI hazır · ${roiPoints.length} köşe · Toplamaya başlayabilirsin`;
+      }catch(e){message(e.message,true);}
+    };
+    $('clear-roi').onclick=()=>{roiPoints=[];roiClosed=false;roiCursor=null;paintLive();updateControls();$('live-info').textContent='ROI köşelerini yeniden seç.';};
     $('model').oninput=()=>{classModelPath='';$('class-list').textContent='Yeni model için sınıfları göster.';};
     $('load-classes').onclick=loadClasses;
     $('select-all').onclick=()=>[...$('class-list').querySelectorAll('input')].forEach(input=>input.checked=true);
@@ -159,12 +224,12 @@
       }catch(e){note.textContent=e.message;}
       finally{button.disabled=false;$('model-file').value='';}
     };
-    $('stop').onclick=async()=>{try{await api('/api/stop',{});message('Durduruldu');}catch(e){message(e.message,true);}};
+    $('stop').onclick=async()=>{try{await api('/api/stop',{});isConnected=false;isRunning=false;lastFrameKey='';updateControls();message('Durduruldu');}catch(e){message(e.message,true);}};
     $('capture').onclick=async()=>{try{await api('/api/capture',{});await candidates(true);}catch(e){message(e.message,true);}};
     $('refresh').onclick=()=>candidates(true);
     $('newer').onclick=()=>{candidatePage=Math.max(0,candidatePage-1);candidates(true);};
     $('older').onclick=()=>{candidatePage++;candidates(true);};
-    status(); candidates(); loadClasses(); setInterval(status,1500); setInterval(()=>candidates(),5000);
+    updateControls();status();candidates();loadClasses();setInterval(status,1500);setInterval(()=>candidates(),5000);
   </script>
 </body>
 </html>

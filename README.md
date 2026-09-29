@@ -1,6 +1,6 @@
 # YOLO RTSP Veri Toplayıcı
 
-RTSP kameradan GStreamer ile kare alır, seçilen Ultralytics `.pt` nesne tespit modeliyle işler ve tahmin içeren kareleri onay listesine ekler. Yalnızca onaylanan görseller ile seçilen kutular YOLO veri setine yazılır.
+RTSP kameradan GStreamer ile kare alır. Kullanıcı kamera önizlemesinde çokgen ROI seçip toplamayı başlattıktan sonra, seçilen Ultralytics `.pt` nesne tespit modeliyle ROI görüntüsünü işler ve tahmin içeren kareleri onay listesine ekler. Yalnızca onaylanan görseller ile seçilen kutular YOLO veri setine yazılır.
 
 ## Çalıştırma
 
@@ -14,12 +14,15 @@ Bu cihazdaki `/home/waky/.venvs/vision` Python ortamı kullanılır. Ortamın ö
 bash run.sh
 ```
 
-Arayüz: `http://127.0.0.1:8765`. **Dosya seç** düğmesi cihazın dosya seçicisini açar. Seçilen `.pt` dosyası proje içindeki `models/` klasörüne kopyalanır ve model yolu otomatik doldurulur. Dilerseniz tam dosya yolunu elle de girebilirsiniz. Modeldeki sınıflar otomatik okunur; **Sınıfları göster** ile tekrar yükleyebilirsiniz. İşlenmesini istediğiniz sınıfları işaretleyin. RTSP adresini girdikten sonra **Bağlan ve başlat** düğmesine basın. Model cihazda mevcut bir Ultralytics *detection* checkpoint'i olmalı. Örnek çalışan model: `/home/waky/Projeler/ocr_project/models/license-plate-finetune-v1l.pt`. `partCheck/outputs/10091012/best_model.pt` dosyası Ultralytics checkpoint biçiminde değil.
+Arayüz: `http://127.0.0.1:8765`. **Dosya seç** düğmesi cihazın dosya seçicisini açar. Seçilen `.pt` dosyası proje içindeki `models/` klasörüne kopyalanır ve model yolu otomatik doldurulur. Dilerseniz tam dosya yolunu elle de girebilirsiniz. Modeldeki sınıflar otomatik okunur; **Sınıfları göster** ile tekrar yükleyebilirsiniz. İşlenmesini istediğiniz sınıfları işaretleyin. Model cihazda mevcut bir Ultralytics *detection* checkpoint'i olmalı. Örnek çalışan model: `/home/waky/Projeler/ocr_project/models/license-plate-finetune-v1l.pt`. `partCheck/outputs/10091012/best_model.pt` dosyası Ultralytics checkpoint biçiminde değil.
+
+RTSP adresini girip **Kameraya bağlan** düğmesine basın. Önizleme üzerinde çokgen ROI köşelerini sırayla tıklayın; en az üç köşe seçtikten sonra **ROI’yi tamamla** ve **Toplamaya başla** düğmelerine basın. ROI seçilmeden model çıkarımı ve aday toplama başlamaz. ROI’yi yeniden çizmek için **ROI’yi sıfırla** kullanılır.
 
 ## Kullanım
 
 - `ffprobe` akışın H.264/H.265 codec'ini belirler. GStreamer `rtspsrc` ve yazılım çözümü ile JPEG kareleri alır.
-- Çıkarımın bulunduğu kareler belirlenen saniye aralığında otomatik olarak `pending/` klasörüne eklenir; sabit aday sınırı yoktur. Onay listesi 40'ar görsellik sayfalar halinde gösterilir. **Bu kareyi aday yap** düğmesi işlenen son kareyi ayrıca ekler.
+- Çokgen ROI'nin çevrelediği bölüm kırpılır ve çokgen dışı siyaha maskelenir. Model bu görüntüyü işler; veri setine eklenecek JPEG ve YOLO koordinatları da aynı kırpıma aittir.
+- Çıkarımın bulunduğu ROI kareleri belirlenen saniye aralığında otomatik olarak `pending/` klasörüne eklenir; sabit aday sınırı yoktur. Onay listesi 40'ar görsellik sayfalar halinde gösterilir. **Bu kareyi aday yap** düğmesi işlenen son ROI karesini ayrıca ekler.
 - Adayda kutu seçimini değiştirebilir, **Onayla** veya **Reddet** diyebilirsiniz. Eksik/hatalı kutulu görselleri reddedin; arayüz şu aşamada yeni kutu çizmez.
 - Onaylanan veriler `dataset/images/train`, `dataset/labels/train`, `dataset/classes.txt` ve `dataset/data.yaml` dosyalarında tutulur. Sınıflar model adına göre eşleştirilir; YOLO satırları `class_id x_center y_center width height` biçimindedir. Hiç kutu seçmeden onaylamak boş etiket dosyası oluşturur.
 - Bekleyen adaylar uygulama yeniden başlatıldığında korunur.

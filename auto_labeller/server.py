@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from .capture import RtspCapture, detect_codec
+from .roi import mask_frame, validate_polygon
 from .storage import CandidateStore
 
 
@@ -30,6 +31,7 @@ class Labeller:
         self.stop_event = threading.Event()
         self.model = None
         self.model_path = ""
+        self.roi: list[tuple[float, float]] = []
         self.selected_classes: list[int] = []
         self.interval = 2.0
         self.confidence = 0.35
@@ -56,11 +58,31 @@ class Labeller:
         return [{"id": int(class_id), "name": name}
                 for class_id, name in sorted(model.names.items())]
 
-    def start(self, url: str, model_path: str, confidence: float, interval: float,
-              collect_interval: float, selected_classes: list[int]) -> dict:
+    def connect(self, url: str) -> dict:
         parsed = urlsplit(url)
         if parsed.scheme not in {"rtsp", "rtsps"} or not parsed.hostname:
             raise ValueError("Geçerli bir RTSP adresi gir")
+        self.stop()
+        codec = detect_codec(url)
+        capture = RtspCapture(url, codec)
+        with self.lock:
+            self.capture = capture
+            self.error = ""
+        capture.start()
+        return {"codec": codec}
+
+    def start(self, url: str, model_path: str, confidence: float, interval: float,
+              collect_interval: float, selected_classes: list[int], roi: object) -> dict:
+        polygon = validate_polygon(roi)
+        with self.lock:
+            capture = self.capture
+            if capture is None or capture.url != url:
+                raise ValueError("Önce bu RTSP kameraya bağlanıp ROI seç")
+            if self.worker is not None:
+                raise ValueError("Toplama zaten çalışıyor")
+        frame = capture.latest()
+        if frame is None or time.time() - frame.captured_at > 5 or capture.error:
+            raise ValueError("ROI için güncel kamera karesi bekleniyor")
         if not 0.01 <= confidence <= 1 or not 0.2 <= interval <= 60 or not 1 <= collect_interval <= 3600:
             raise ValueError("Eşik veya aralık geçersiz")
         model_file, model = self.load_model(model_path)
@@ -69,12 +91,12 @@ class Labeller:
         if any(type(class_id) is not int or class_id not in model.names for class_id in selected_classes):
             raise ValueError("Modelde bulunmayan sınıf seçildi")
         selected_classes = list(dict.fromkeys(selected_classes))
-        self.stop()
-        codec = detect_codec(url)
-        capture = RtspCapture(url, codec)
         with self.lock:
+            if self.capture is not capture or self.worker is not None:
+                raise ValueError("Kamera bağlantısı değişti; yeniden dene")
             self.model = model
             self.model_path = str(model_file)
+            self.roi = polygon
             self.selected_classes = selected_classes
             self.confidence = confidence
             self.interval = interval
@@ -82,14 +104,15 @@ class Labeller:
             self.last_saved_at = 0.0
             self.result = None
             self.error = ""
-            self.capture = capture
             self.stop_event = threading.Event()
-            self.worker = threading.Thread(target=self._infer_loop, args=(self.stop_event,),
-                                           daemon=True, name="yolo-inference")
-        capture.start()
+            self.worker = threading.Thread(
+                target=self._infer_loop,
+                args=(self.stop_event, capture, model, polygon, selected_classes,
+                      confidence, interval, collect_interval, str(model_file)),
+                daemon=True, name="yolo-inference",
+            )
         self.worker.start()
-        return {"codec": codec, "classes": {class_id: model.names[class_id]
-                                            for class_id in selected_classes}}
+        return {"classes": {class_id: model.names[class_id] for class_id in selected_classes}}
 
     def stop(self) -> None:
         self.stop_event.set()
@@ -102,40 +125,54 @@ class Labeller:
             self.worker = None
             self.model = None
             self.result = None
+            self.roi = []
 
     def status(self) -> dict:
         with self.lock:
             capture = self.capture
             result = self.result
+            running = self.worker is not None
+            frame = capture.latest() if capture else None
+            shown = result if running else ({"sequence": frame.sequence,
+                                            "captured_at": frame.captured_at,
+                                            "detections": []} if frame else None)
             return {
-                "running": capture is not None,
-                "model": self.model_path if capture else "",
-                "frame_sequence": capture.latest().sequence if capture and capture.latest() else 0,
+                "connected": capture is not None,
+                "running": running,
+                "model": self.model_path if running else "",
+                "roi": self.roi if running else [],
+                "frame_sequence": frame.sequence if frame else 0,
                 "camera_error": capture.error if capture else "",
                 "inference_error": self.error,
-                "result": {k: v for k, v in result.items() if k != "jpeg"} if result else None,
+                "result": {k: v for k, v in shown.items() if k != "jpeg"} if shown else None,
             }
 
     def preview(self) -> bytes | None:
         with self.lock:
-            return self.result["jpeg"] if self.result else None
+            if self.worker is not None:
+                return self.result["jpeg"] if self.result else None
+            frame = self.capture.latest() if self.capture else None
+            return frame.jpeg if frame else None
 
     def capture_candidate(self) -> dict:
         with self.lock:
             result = self.result
             model_path = self.model_path
-        if not result:
+            running = self.worker is not None
+        if not running or not result:
             raise ValueError("Henüz işlenmiş kamera karesi yok")
         return self.store.add(result["jpeg"], result["detections"], model_path)
 
-    def _infer_loop(self, stop_event: threading.Event) -> None:
+    def _infer_loop(self, stop_event: threading.Event, capture: RtspCapture, model,
+                    polygon: list[tuple[float, float]], selected_classes: list[int],
+                    confidence: float, interval: float, collect_interval: float,
+                    model_path: str) -> None:
         import cv2
         import numpy as np
 
         last_sequence = 0
         while not stop_event.is_set():
-            capture = self.capture
-            frame = capture.latest() if capture else None
+            frame = capture.latest()
             if not frame or frame.sequence == last_sequence:
                 stop_event.wait(0.1)
                 continue
@@ -144,12 +181,24 @@ class Labeller:
                 image = cv2.imdecode(np.frombuffer(frame.jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
                 if image is None:
                     raise ValueError("JPEG kare çözülemedi")
-                prediction = self.model.predict(
-                    image, conf=self.confidence, classes=self.selected_classes,
+                masked, local_polygon = mask_frame(image, polygon)
+                prediction = model.predict(
+                    masked, conf=confidence, classes=selected_classes,
                     device="cpu", verbose=False,
                 )[0]
+                if stop_event.is_set():
+                    break
+                ok, encoded = cv2.imencode(".jpg", masked,
+                                          [cv2.IMWRITE_JPEG_QUALITY, 90])
+                if not ok:
+                    raise ValueError("ROI görüntüsü JPEG'e dönüştürülemedi")
+                roi_jpeg = encoded.tobytes()
                 detections = []
                 for box in prediction.boxes:
+                    x, y, _, _ = box.xywhn[0].tolist()
+                    center = (x * masked.shape[1], y * masked.shape[0])
+                    if cv2.pointPolygonTest(local_polygon.astype(np.float32), center, False) < 0:
+                        continue
                     class_id = int(box.cls[0].item())
                     detections.append({
                         "class_name": prediction.names[class_id],
@@ -157,7 +206,7 @@ class Labeller:
                         "xywhn": [round(float(v), 6) for v in box.xywhn[0].tolist()],
                     })
                 result = {
-                    "jpeg": frame.jpeg,
+                    "jpeg": roi_jpeg,
                     "sequence": frame.sequence,
                     "captured_at": frame.captured_at,
                     "detections": detections,
@@ -166,13 +215,13 @@ class Labeller:
                     self.result = result
                     self.error = ""
                 now = time.monotonic()
-                if detections and now - self.last_saved_at >= self.collect_interval:
-                    self.store.add(frame.jpeg, detections, self.model_path)
+                if detections and now - self.last_saved_at >= collect_interval:
+                    self.store.add(roi_jpeg, detections, model_path)
                     self.last_saved_at = now
             except Exception as exc:
                 with self.lock:
                     self.error = str(exc)
-            stop_event.wait(self.interval)
+            stop_event.wait(interval)
 
 
 LABELLER = Labeller()
@@ -264,11 +313,16 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             if path == "/api/models/classes":
                 response = LABELLER.class_options(str(body.get("model_path", "")))
+            elif path == "/api/roi/validate":
+                response = {"roi": validate_polygon(body.get("roi"))}
+            elif path == "/api/connect":
+                response = LABELLER.connect(str(body.get("url", "")))
             elif path == "/api/start":
                 response = LABELLER.start(
                     str(body.get("url", "")), str(body.get("model_path", "")),
                     float(body.get("confidence", 0.35)), float(body.get("interval", 2)),
                     float(body.get("collect_interval", 10)), body.get("selected_classes", []),
+                    body.get("roi"),
                 )
             elif path == "/api/stop":
                 LABELLER.stop()
