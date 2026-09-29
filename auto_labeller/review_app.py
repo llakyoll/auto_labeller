@@ -296,20 +296,13 @@ class ReviewApp(tk.Tk):
     def send_for_relabel(self) -> None:
         if not self.current:
             return
-        if not messagebox.askyesno(
-            "Yeniden etiketlemeye gönder",
-            "Aday veri setine eklenmeden relabel/ klasörüne taşınacak. Devam edilsin mi?",
-            parent=self,
-        ):
-            return
         try:
-            result = self.store.send_for_relabel(self.current["id"])
+            self.store.send_for_relabel(self.current["id"])
         except (OSError, ValueError) as error:
             messagebox.showerror("Taşınamadı", str(error), parent=self)
             return
         self.current = None
         self.refresh_candidates()
-        messagebox.showinfo("Yeniden etiketleme kuyruğuna alındı", result["image"], parent=self)
 
     def clear_current(self, text: str) -> None:
         self.current = None
