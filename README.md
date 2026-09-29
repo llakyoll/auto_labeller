@@ -44,7 +44,7 @@ RTSP adresini girip **Kameraya bağlan** düğmesine basın. Önizleme üzerinde
 - Masaüstü uygulamasındaki **Yeniden etiketlemeye gönder** düğmesi, adayın JPEG görselini ve tahmin JSON'unu veri setine eklemeden `relabel/` klasörüne taşır. Bu adaylar bekleyen listeden çıkar ve yeniden etiketleme için ayrı tutulur.
 - `E` kısayolu adayı doğrudan yeniden etiketleme kuyruğuna gönderir.
 - `Ctrl+Z`, masaüstü uygulamasındaki son onaylama, reddetme veya yeniden etiketlemeye gönderme işlemini geri alır.
-- `review_approved.sh`, onaylanan `dataset/images/train` görsellerini ve karşılık gelen YOLO etiketlerini açar. Kutunun sınıfını değiştirebilir veya kutuyu etiketten çıkarabilirsin. `Ctrl+S` değişiklikleri ilgili etiket `.txt` dosyasına kaydeder.
+- `review_approved.sh`, onaylanan `dataset/images/train` görsellerini ve karşılık gelen YOLO etiketlerini açar. Kutunun sınıfını değiştirebilir veya kutuyu etiketten çıkarabilirsin. `←` ve `→` tuşları görseller arasında geçer; `Ctrl+S` değişiklikleri ilgili etiket `.txt` dosyasına kaydeder.
 - Masaüstü uygulamasında `A` adayın mevcut düzenlemeleriyle doğrudan onaylanmasını, `R` doğrudan reddedilmesini sağlar. `1`–`9` seçili kutunun sınıfını listedeki aynı sıradaki sınıfa çevirir; örneğin `1` ilk sınıfı, `2` ikinci sınıfı atar.
 - Onaylanan veriler `dataset/images/train`, `dataset/labels/train`, `dataset/classes.txt` ve `dataset/data.yaml` dosyalarında tutulur. Sınıflar model adına göre eşleştirilir; YOLO satırları `class_id x_center y_center width height` biçimindedir. Hiç kutu seçmeden onaylamak boş etiket dosyası oluşturur.
 - Bekleyen adaylar uygulama yeniden başlatıldığında korunur.

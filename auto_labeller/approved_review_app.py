@@ -33,12 +33,14 @@ class ApprovedReviewApp(tk.Tk):
         self.dirty = False
         self._build()
         self.bind_all("<Key>", self.handle_shortcut)
+        self.bind_all("<Left>", self.previous_image)
+        self.bind_all("<Right>", self.next_image)
         self.refresh_images()
 
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(10, 10, 10, 0))
         top.pack(fill=tk.X)
-        ttk.Label(top, text="Kısayollar: Ctrl+S kaydet · 1–9 seçili kutunun sınıfını değiştirir.").pack(side=tk.LEFT)
+        ttk.Label(top, text="Kısayollar: ←/→ görsel değiştir · Ctrl+S kaydet · 1–9 seçili kutunun sınıfını değiştirir.").pack(side=tk.LEFT)
         ttk.Button(top, text="Listeyi yenile", command=self.refresh_images).pack(side=tk.RIGHT)
         self.save_button = ttk.Button(top, text="Kaydet (Ctrl+S)", command=self.save_labels, state=tk.DISABLED)
         self.save_button.pack(side=tk.RIGHT, padx=(0, 8))
@@ -120,6 +122,30 @@ class ApprovedReviewApp(tk.Tk):
         selection = self.image_list.curselection()
         if selection:
             self.load_image(self.images[selection[0]])
+
+    def previous_image(self, event=None) -> str | None:
+        return self.change_image(-1, event)
+
+    def next_image(self, event=None) -> str | None:
+        return self.change_image(1, event)
+
+    def change_image(self, direction: int, event=None) -> str | None:
+        widget = getattr(event, "widget", None)
+        widget_class = widget.winfo_class() if hasattr(widget, "winfo_class") else ""
+        if widget_class in {"Entry", "TCombobox", "Listbox", "Treeview"}:
+            return None
+        if not self.images or self.current_path not in self.images:
+            return "break"
+        index = self.images.index(self.current_path) + direction
+        if 0 <= index < len(self.images):
+            self.image_list.selection_clear(0, tk.END)
+            self.image_list.selection_set(index)
+            self.image_list.activate(index)
+            self.image_list.see(index)
+            self.load_image(self.images[index])
+        else:
+            self.bell()
+        return "break"
 
     def load_image(self, path: Path, force: bool = False) -> None:
         if not force and not self.may_switch():
