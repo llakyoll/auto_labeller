@@ -47,6 +47,11 @@ class CandidateStore:
         self._check_id(candidate_id)
         return (self.pending / f"{candidate_id}.jpg").read_bytes()
 
+    def record(self, candidate_id: str) -> dict:
+        self._check_id(candidate_id)
+        with self._lock:
+            return json.loads((self.pending / f"{candidate_id}.json").read_text(encoding="utf-8"))
+
     def reject(self, candidate_id: str) -> None:
         self._check_id(candidate_id)
         with self._lock:
@@ -57,44 +62,64 @@ class CandidateStore:
         self._check_id(candidate_id)
         with self._lock:
             record = json.loads((self.pending / f"{candidate_id}.json").read_text(encoding="utf-8"))
-            image = (self.pending / f"{candidate_id}.jpg").read_bytes()
             detections = record["detections"]
             if not isinstance(selected, list) or any(type(i) is not int or i < 0 or i >= len(detections) for i in selected):
                 raise ValueError("Geçersiz kutu seçimi")
             chosen = [detections[i] for i in dict.fromkeys(selected)]
-            image_dir = self.dataset / "images" / "train"
-            label_dir = self.dataset / "labels" / "train"
-            image_dir.mkdir(parents=True, exist_ok=True)
-            label_dir.mkdir(parents=True, exist_ok=True)
-            classes_file = self.dataset / "classes.txt"
-            classes = classes_file.read_text(encoding="utf-8").splitlines() if classes_file.exists() else []
-            labels = []
-            for detection in chosen:
-                name = detection["class_name"]
-                if name not in classes:
-                    classes.append(name)
-                x, y, w, h = detection["xywhn"]
-                if any(not isinstance(v, (int, float)) or not 0 <= v <= 1 for v in (x, y, w, h)):
-                    raise ValueError("Geçersiz kutu koordinatı")
-                labels.append(f"{classes.index(name)} {x:.6f} {y:.6f} {w:.6f} {h:.6f}")
-            image_target = image_dir / f"{candidate_id}.jpg"
-            label_target = label_dir / f"{candidate_id}.txt"
-            image_temp = image_dir / f".{candidate_id}.jpg.tmp"
-            label_temp = label_dir / f".{candidate_id}.txt.tmp"
-            image_temp.write_bytes(image)
-            label_temp.write_text("\n".join(labels) + ("\n" if labels else ""), encoding="utf-8")
-            os.replace(image_temp, image_target)
-            os.replace(label_temp, label_target)
-            classes_file.write_text("\n".join(classes) + ("\n" if classes else ""), encoding="utf-8")
-            data_yaml = (
-                f"path: {json.dumps(str(self.dataset.resolve()), ensure_ascii=False)}\n"
-                "train: images/train\n"
-                f"names: {json.dumps(classes, ensure_ascii=False)}\n"
-            )
-            (self.dataset / "data.yaml").write_text(data_yaml, encoding="utf-8")
-            (self.pending / f"{candidate_id}.jpg").unlink()
-            (self.pending / f"{candidate_id}.json").unlink()
-            return {"id": candidate_id, "image": str(image_target), "label": str(label_target), "boxes": len(chosen)}
+            return self._approve_locked(candidate_id, chosen)
+
+    def approve_detections(self, candidate_id: str, detections: list[dict]) -> dict:
+        self._check_id(candidate_id)
+        if not isinstance(detections, list):
+            raise ValueError("Kutular liste biçiminde olmalı")
+        with self._lock:
+            return self._approve_locked(candidate_id, detections)
+
+    def _approve_locked(self, candidate_id: str, chosen: list[dict]) -> dict:
+        image = (self.pending / f"{candidate_id}.jpg").read_bytes()
+        image_dir = self.dataset / "images" / "train"
+        label_dir = self.dataset / "labels" / "train"
+        image_dir.mkdir(parents=True, exist_ok=True)
+        label_dir.mkdir(parents=True, exist_ok=True)
+        classes_file = self.dataset / "classes.txt"
+        classes = classes_file.read_text(encoding="utf-8").splitlines() if classes_file.exists() else []
+        labels = []
+        for detection in chosen:
+            if not isinstance(detection, dict):
+                raise ValueError("Geçersiz kutu")
+            name = detection.get("class_name")
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("Kutu sınıfı boş olamaz")
+            name = name.strip()
+            if name not in classes:
+                classes.append(name)
+            coordinates = detection.get("xywhn")
+            if not isinstance(coordinates, list) or len(coordinates) != 4:
+                raise ValueError("Geçersiz kutu koordinatı")
+            x, y, w, h = coordinates
+            if any(not isinstance(v, (int, float)) or not 0 <= v <= 1 for v in (x, y, w, h)):
+                raise ValueError("Geçersiz kutu koordinatı")
+            if w <= 0 or h <= 0:
+                raise ValueError("Kutu genişliği ve yüksekliği pozitif olmalı")
+            labels.append(f"{classes.index(name)} {x:.6f} {y:.6f} {w:.6f} {h:.6f}")
+        image_target = image_dir / f"{candidate_id}.jpg"
+        label_target = label_dir / f"{candidate_id}.txt"
+        image_temp = image_dir / f".{candidate_id}.jpg.tmp"
+        label_temp = label_dir / f".{candidate_id}.txt.tmp"
+        image_temp.write_bytes(image)
+        label_temp.write_text("\n".join(labels) + ("\n" if labels else ""), encoding="utf-8")
+        os.replace(image_temp, image_target)
+        os.replace(label_temp, label_target)
+        classes_file.write_text("\n".join(classes) + ("\n" if classes else ""), encoding="utf-8")
+        data_yaml = (
+            f"path: {json.dumps(str(self.dataset.resolve()), ensure_ascii=False)}\n"
+            "train: images/train\n"
+            f"names: {json.dumps(classes, ensure_ascii=False)}\n"
+        )
+        (self.dataset / "data.yaml").write_text(data_yaml, encoding="utf-8")
+        (self.pending / f"{candidate_id}.jpg").unlink()
+        (self.pending / f"{candidate_id}.json").unlink()
+        return {"id": candidate_id, "image": str(image_target), "label": str(label_target), "boxes": len(chosen)}
 
     @staticmethod
     def _check_id(candidate_id: str) -> None:
