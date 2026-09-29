@@ -146,9 +146,11 @@ class ReviewApp(tk.Tk):
 
     def handle_shortcut(self, event) -> str | None:
         """Text entry fields keep their own keystrokes; the review surface gets shortcuts."""
-        if event.widget.winfo_class() in {"Entry", "TCombobox"}:
+        widget = getattr(event, "widget", None)
+        widget_class = widget.winfo_class() if hasattr(widget, "winfo_class") else ""
+        if widget_class in {"Entry", "TCombobox"}:
             return None
-        key = event.keysym.lower()
+        key = str(getattr(event, "keysym", "")).lower()
         if key == "a":
             self.approve(announce=False)
             return "break"
