@@ -31,12 +31,13 @@ class ReviewApp(tk.Tk):
         self.image_rect = (0, 0, 1, 1)
         self.selected_index: int | None = None
         self._build()
+        self.bind_all("<Key>", self.handle_shortcut)
         self.refresh_candidates()
 
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(10, 10, 10, 0))
         top.pack(fill=tk.X)
-        ttk.Label(top, text="Bekleyen adayları incele; doğru kutuları dahil et, yanlış sınıfı değiştir.").pack(side=tk.LEFT)
+        ttk.Label(top, text="Kısayollar: A onayla · R reddet · 1–9 seçili kutunun sınıfını değiştirir.").pack(side=tk.LEFT)
         ttk.Button(top, text="Listeyi yenile", command=self.refresh_candidates).pack(side=tk.RIGHT)
 
         body = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
@@ -80,7 +81,7 @@ class ReviewApp(tk.Tk):
         self.class_combo = ttk.Combobox(right, textvariable=self.class_var)
         self.class_combo.pack(fill=tk.X, pady=(4, 6))
         ttk.Button(right, text="Sınıfı uygula", command=self.apply_class).pack(fill=tk.X)
-        ttk.Label(right, text="İpucu: 'Dahil' sütununa tıklayarak kutuyu çıkarabilir, görselde kutuya tıklayarak seçebilirsin.",
+        ttk.Label(right, text="İpucu: 'Dahil' sütununa tıklayarak kutuyu çıkarabilir, görselde kutuya tıklayarak seçebilirsin. 1–9, listedeki sınıf sırasını kullanır.",
                   wraplength=250, justify=tk.LEFT).pack(anchor=tk.W, pady=(12, 0))
 
         actions = ttk.Frame(right)
@@ -143,10 +144,6 @@ class ReviewApp(tk.Tk):
 
     def available_classes(self, record: dict) -> list[str]:
         names: list[str] = []
-        classes_file = self.store.dataset / "classes.txt"
-        if classes_file.exists():
-            names.extend(name for name in classes_file.read_text(encoding="utf-8").splitlines() if name)
-        names.extend(str(box["class_name"]) for box in record.get("detections", []))
         model_path = Path(str(record.get("model", "")))
         if model_path.is_file():
             try:
@@ -155,7 +152,37 @@ class ReviewApp(tk.Tk):
                 names.extend(str(name) for _, name in sorted(model.names.items()))
             except Exception:
                 pass
+        classes_file = self.store.dataset / "classes.txt"
+        if classes_file.exists():
+            names.extend(name for name in classes_file.read_text(encoding="utf-8").splitlines() if name)
+        names.extend(str(box["class_name"]) for box in record.get("detections", []))
         return list(dict.fromkeys(names))
+
+    def handle_shortcut(self, event) -> str | None:
+        """Text entry fields keep their own keystrokes; the review surface gets shortcuts."""
+        if event.widget.winfo_class() in {"Entry", "TCombobox"}:
+            return None
+        key = event.keysym.lower()
+        if key == "a":
+            self.approve(announce=False)
+            return "break"
+        if key == "r":
+            self.reject(confirm=False)
+            return "break"
+        if key.isdigit() and key != "0":
+            self.apply_shortcut_class(int(key))
+            return "break"
+        return None
+
+    def apply_shortcut_class(self, position: int) -> None:
+        if self.selected_index is None:
+            self.bell()
+            return
+        if position > len(self.class_names):
+            self.bell()
+            return
+        self.class_var.set(self.class_names[position - 1])
+        self.apply_class()
 
     def update_box_tree(self) -> None:
         self.box_tree.delete(*self.box_tree.get_children())
@@ -252,7 +279,7 @@ class ReviewApp(tk.Tk):
             self.canvas.create_text(x1 + 4, max(top + 9, y1 + 10), anchor=tk.W,
                                     text=box["class_name"], fill=color, font=("TkDefaultFont", 10, "bold"))
 
-    def approve(self) -> None:
+    def approve(self, announce: bool = True) -> None:
         if not self.current:
             return
         chosen = [{"class_name": box["class_name"], "xywhn": box["xywhn"]}
@@ -262,14 +289,15 @@ class ReviewApp(tk.Tk):
         except (OSError, ValueError) as error:
             messagebox.showerror("Onaylanamadı", str(error), parent=self)
             return
-        messagebox.showinfo("Veri setine eklendi", f"{result['boxes']} kutu onaylandı.", parent=self)
+        if announce:
+            messagebox.showinfo("Veri setine eklendi", f"{result['boxes']} kutu onaylandı.", parent=self)
         self.current = None
         self.refresh_candidates()
 
-    def reject(self) -> None:
+    def reject(self, confirm: bool = True) -> None:
         if not self.current:
             return
-        if not messagebox.askyesno("Adayı reddet", "Bu aday ve tahminleri silinsin mi?", parent=self):
+        if confirm and not messagebox.askyesno("Adayı reddet", "Bu aday ve tahminleri silinsin mi?", parent=self):
             return
         try:
             self.store.reject(self.current["id"])
