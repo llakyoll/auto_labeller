@@ -41,7 +41,7 @@
     </section>
     <section>
       <div class="panel"><div class="row" style="align-items:center"><h2 style="flex:1">Canlı işlenen kare</h2><button id="capture" class="secondary">Bu kareyi aday yap</button></div><div class="preview"><canvas id="live"></canvas></div><p id="live-info" class="hint">Kamera bekleniyor</p></div>
-      <div class="panel"><div class="row" style="align-items:center"><h2 style="flex:1">Onay bekleyenler <span id="count"></span></h2><button id="refresh" class="secondary">Yenile</button></div><div id="candidates" class="list"><span class="muted">Henüz aday yok.</span></div></div>
+      <div class="panel"><div class="row" style="align-items:center"><h2 style="flex:1">Onay bekleyenler <span id="count"></span></h2><button id="refresh" class="secondary">Yenile</button></div><div id="candidates" class="list"><span class="muted">Henüz aday yok.</span></div><div class="actions" style="align-items:center"><button id="newer" class="secondary">Daha yeni</button><span id="page-info" class="muted">Sayfa 1</span><button id="older" class="secondary">Daha eski</button></div></div>
     </section>
   </main>
   <script>
@@ -70,7 +70,7 @@
       };
       image.src=url;
     }
-    let lastSequence=0, candidateIds='', classModelPath='';
+    let lastSequence=0, candidateIds='', candidatePage=0, classModelPath='';
     async function loadClasses(){
       const modelPath=$('model').value.trim(), host=$('class-list');
       if(!modelPath){host.textContent='Önce model seç.';classModelPath='';return false;}
@@ -102,9 +102,14 @@
     }
     async function candidates(force=false) {
       try {
-        const rows=await api('/api/candidates');
-        $('count').textContent=`(${rows.length})`;
-        const ids=rows.map(r=>r.id).join(',');
+        const data=await api(`/api/candidates?page=${candidatePage}`);
+        const rows=data.items;
+        candidatePage=data.page;
+        $('count').textContent=`(${data.total})`;
+        $('page-info').textContent=`Sayfa ${candidatePage+1} / ${Math.max(1,Math.ceil(data.total/data.page_size))}`;
+        $('newer').disabled=candidatePage===0;
+        $('older').disabled=(candidatePage+1)*data.page_size>=data.total;
+        const ids=`${candidatePage}:${rows.map(r=>r.id).join(',')}`;
         if(!force && ids===candidateIds) return;
         candidateIds=ids;
         const host=$('candidates'); host.replaceChildren();
@@ -157,6 +162,8 @@
     $('stop').onclick=async()=>{try{await api('/api/stop',{});message('Durduruldu');}catch(e){message(e.message,true);}};
     $('capture').onclick=async()=>{try{await api('/api/capture',{});await candidates(true);}catch(e){message(e.message,true);}};
     $('refresh').onclick=()=>candidates(true);
+    $('newer').onclick=()=>{candidatePage=Math.max(0,candidatePage-1);candidates(true);};
+    $('older').onclick=()=>{candidatePage++;candidates(true);};
     status(); candidates(); loadClasses(); setInterval(status,1500); setInterval(()=>candidates(),5000);
   </script>
 </body>

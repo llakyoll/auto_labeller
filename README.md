@@ -19,7 +19,7 @@ Arayüz: `http://127.0.0.1:8765`. **Dosya seç** düğmesi cihazın dosya seçic
 ## Kullanım
 
 - `ffprobe` akışın H.264/H.265 codec'ini belirler. GStreamer `rtspsrc` ve yazılım çözümü ile JPEG kareleri alır.
-- Çıkarımın bulunduğu kareler belirlenen saniye aralığında otomatik olarak `pending/` klasörüne eklenir. En fazla 500 aday bekletilir. **Bu kareyi aday yap** düğmesi işlenen son kareyi ayrıca ekler.
+- Çıkarımın bulunduğu kareler belirlenen saniye aralığında otomatik olarak `pending/` klasörüne eklenir; sabit aday sınırı yoktur. Onay listesi 40'ar görsellik sayfalar halinde gösterilir. **Bu kareyi aday yap** düğmesi işlenen son kareyi ayrıca ekler.
 - Adayda kutu seçimini değiştirebilir, **Onayla** veya **Reddet** diyebilirsiniz. Eksik/hatalı kutulu görselleri reddedin; arayüz şu aşamada yeni kutu çizmez.
 - Onaylanan veriler `dataset/images/train`, `dataset/labels/train`, `dataset/classes.txt` ve `dataset/data.yaml` dosyalarında tutulur. Sınıflar model adına göre eşleştirilir; YOLO satırları `class_id x_center y_center width height` biçimindedir. Hiç kutu seçmeden onaylamak boş etiket dosyası oluşturur.
 - Bekleyen adaylar uygulama yeniden başlatıldığında korunur.

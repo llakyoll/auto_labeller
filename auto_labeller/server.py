@@ -11,7 +11,7 @@ import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from .capture import RtspCapture, detect_codec
 from .storage import CandidateStore
@@ -167,12 +167,8 @@ class Labeller:
                     self.error = ""
                 now = time.monotonic()
                 if detections and now - self.last_saved_at >= self.collect_interval:
-                    if len(self.store.list()) < 500:
-                        self.store.add(frame.jpeg, detections, self.model_path)
-                        self.last_saved_at = now
-                    else:
-                        with self.lock:
-                            self.error = "500 aday birikti; otomatik toplama durdu"
+                    self.store.add(frame.jpeg, detections, self.model_path)
+                    self.last_saved_at = now
             except Exception as exc:
                 with self.lock:
                     self.error = str(exc)
@@ -235,14 +231,16 @@ class Handler(BaseHTTPRequestHandler):
         return {"path": str(target), "name": name, "size": length}
 
     def do_GET(self) -> None:
-        path = urlsplit(self.path).path
+        request_url = urlsplit(self.path)
+        path = request_url.path
         try:
             if path == "/":
                 self._send(STATIC.read_bytes(), "text/html; charset=utf-8")
             elif path == "/api/status":
                 self._json(LABELLER.status())
             elif path == "/api/candidates":
-                self._json(LABELLER.store.list())
+                page = int(parse_qs(request_url.query).get("page", ["0"])[0])
+                self._json(LABELLER.store.page(page))
             elif path == "/api/frame.jpg":
                 image = LABELLER.preview()
                 if image is None:

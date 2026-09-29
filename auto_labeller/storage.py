@@ -27,10 +27,21 @@ class CandidateStore:
             )
         return record
 
-    def list(self) -> list[dict]:
+    def page(self, page: int, page_size: int = 40) -> dict:
+        if page < 0 or page_size < 1:
+            raise ValueError("Geçersiz aday sayfası")
         with self._lock:
-            return [json.loads(path.read_text(encoding="utf-8"))
-                    for path in sorted(self.pending.glob("*.json"), reverse=True)]
+            paths = sorted(self.pending.glob("*.json"),
+                           key=lambda path: (path.stat().st_mtime_ns, path.name), reverse=True)
+            total = len(paths)
+            page = min(page, max(0, (total - 1) // page_size))
+            selected = paths[page * page_size:(page + 1) * page_size]
+            return {
+                "items": [json.loads(path.read_text(encoding="utf-8")) for path in selected],
+                "page": page,
+                "page_size": page_size,
+                "total": total,
+            }
 
     def image(self, candidate_id: str) -> bytes:
         self._check_id(candidate_id)
