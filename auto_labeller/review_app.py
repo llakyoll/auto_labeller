@@ -86,6 +86,7 @@ class ReviewApp(tk.Tk):
 
         actions = ttk.Frame(right)
         actions.pack(fill=tk.X, side=tk.BOTTOM, pady=(20, 0))
+        ttk.Button(actions, text="Yeniden etiketlemeye gönder", command=self.send_for_relabel).pack(fill=tk.X)
         ttk.Button(actions, text="Reddet", command=self.reject, style="Danger.TButton").pack(fill=tk.X)
         ttk.Button(actions, text="Onayla ve veri setine ekle", command=self.approve).pack(fill=tk.X, pady=(8, 0))
 
@@ -306,6 +307,24 @@ class ReviewApp(tk.Tk):
             return
         self.current = None
         self.refresh_candidates()
+
+    def send_for_relabel(self) -> None:
+        if not self.current:
+            return
+        if not messagebox.askyesno(
+            "Yeniden etiketlemeye gönder",
+            "Aday veri setine eklenmeden relabel/ klasörüne taşınacak. Devam edilsin mi?",
+            parent=self,
+        ):
+            return
+        try:
+            result = self.store.send_for_relabel(self.current["id"])
+        except (OSError, ValueError) as error:
+            messagebox.showerror("Taşınamadı", str(error), parent=self)
+            return
+        self.current = None
+        self.refresh_candidates()
+        messagebox.showinfo("Yeniden etiketleme kuyruğuna alındı", result["image"], parent=self)
 
     def clear_current(self, text: str) -> None:
         self.current = None

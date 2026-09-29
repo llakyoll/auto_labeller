@@ -13,9 +13,11 @@ class CandidateStore:
     def __init__(self, root: Path):
         self.root = root
         self.pending = root / "pending"
+        self.relabel_dir = root / "relabel"
         self.dataset = root / "dataset"
         self._lock = threading.Lock()
         self.pending.mkdir(parents=True, exist_ok=True)
+        self.relabel_dir.mkdir(parents=True, exist_ok=True)
 
     def add(self, jpeg: bytes, detections: list[dict], model: str) -> dict:
         candidate_id = uuid.uuid4().hex
@@ -57,6 +59,26 @@ class CandidateStore:
         with self._lock:
             for suffix in (".json", ".jpg"):
                 (self.pending / f"{candidate_id}{suffix}").unlink(missing_ok=True)
+
+    def send_for_relabel(self, candidate_id: str) -> dict:
+        """Adayı veri setine almadan yeniden etiketleme kuyruğuna taşır."""
+        self._check_id(candidate_id)
+        with self._lock:
+            source_image = self.pending / f"{candidate_id}.jpg"
+            source_record = self.pending / f"{candidate_id}.json"
+            if not source_image.is_file() or not source_record.is_file():
+                raise FileNotFoundError("Aday görseli veya tahmini bulunamadı")
+            target_image = self.relabel_dir / source_image.name
+            target_record = self.relabel_dir / source_record.name
+            if target_image.exists() or target_record.exists():
+                raise FileExistsError("Aday yeniden etiketleme klasöründe zaten var")
+            os.replace(source_image, target_image)
+            try:
+                os.replace(source_record, target_record)
+            except OSError:
+                os.replace(target_image, source_image)
+                raise
+            return {"id": candidate_id, "image": str(target_image), "record": str(target_record)}
 
     def approve(self, candidate_id: str, selected: list[int]) -> dict:
         self._check_id(candidate_id)
