@@ -38,7 +38,7 @@ class ReviewApp(tk.Tk):
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(10, 10, 10, 0))
         top.pack(fill=tk.X)
-        ttk.Label(top, text="Kısayollar: A onayla · R reddet · 1–9 seçili kutunun sınıfını değiştirir.").pack(side=tk.LEFT)
+        ttk.Label(top, text="Kısayollar: A onayla · R reddet · E yeniden etiketle · 1–9 sınıf değiştir.").pack(side=tk.LEFT)
         ttk.Button(top, text="Listeyi yenile", command=self.refresh_candidates).pack(side=tk.RIGHT)
 
         body = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
@@ -154,6 +154,9 @@ class ReviewApp(tk.Tk):
             return "break"
         if key == "r":
             self.reject(confirm=False)
+            return "break"
+        if key == "e":
+            self.send_for_relabel()
             return "break"
         if key.isdigit() and key != "0":
             self.apply_shortcut_class(int(key))
