@@ -4,11 +4,15 @@ RTSP kameradan GStreamer ile kare alır. Kullanıcı kamera önizlemesinde çokg
 
 ## Çalıştırma
 
-Bu cihazdaki `/home/waky/.venvs/vision` Python ortamı kullanılır. Ortamın özel CUDA OpenCV derlemesi sistemde olmayan `libOpenEXR-3_4.so.33` bağına sahip olduğundan uyumlu OpenCV 4.11 yalnızca bu projenin `vendor` klasörüne kurulmuştur. Yeniden kurmak için:
+`run.sh` Python ortamını şu sırayla seçer: `VISION_PYTHON` ortam değişkeni, varsa `/home/waky/.venvs/vision/bin/python`, yoksa `PATH` içindeki `python3`. Ortamda `opencv`, `numpy` ve `ultralytics` kurulu olmalıdır. Proje içinde `vendor/` klasörü varsa `PYTHONPATH`'e önce o eklenir.
+
+`/home/waky/.venvs/vision` ortamının özel CUDA OpenCV derlemesi sistemde olmayan `libOpenEXR-3_4.so.33` bağına sahip olduğundan o cihazda uyumlu OpenCV 4.11 `vendor` klasörüne kurulur:
 
 ```bash
 /home/waky/.venvs/vision/bin/python -m pip install --target ./vendor --no-deps opencv-python-headless==4.11.0.86
 ```
+
+Çıkarım cihazı `AUTO_LABELLER_DEVICE` ile seçilir (`cpu`, `0`, `cuda:0`…). Boş bırakılırsa Ultralytics CUDA varsa GPU'yu, yoksa CPU'yu kullanır.
 
 ```bash
 bash run.sh
@@ -36,6 +40,6 @@ RTSP adresini girip **Kameraya bağlan** düğmesine basın. Önizleme üzerinde
 
 ## Cihaz durumu
 
-GStreamer 1.28.7, `rtspsrc`, H.264/H.265 depay/parse, `avdec_h264`, `avdec_h265`, `videoconvert`, `jpegenc` ve `fdsink` kullanılır. `nvstreammux` yok. Mevcut PyTorch 2.5.1 CUDA derlemesi kurulu olsa da `torch.cuda.is_available()` false ve `nvidia-smi` sürücüyle haberleşemiyor. Uygulama bu nedenle CPU çıkarımı yapar.
+GStreamer 1.28.7, `rtspsrc`, H.264/H.265 depay/parse, `avdec_h264`, `avdec_h265`, `videoconvert`, `jpegenc` ve `fdsink` kullanılır. `nvstreammux` yok. Mevcut PyTorch 2.5.1 CUDA derlemesi kurulu olsa da `torch.cuda.is_available()` false ve `nvidia-smi` sürücüyle haberleşemiyor. O cihazda uygulama CPU'ya düşer; CUDA olan cihazlarda GPU kullanılır.
 
 Henüz gerçek RTSP adresi verilmediğinden canlı kameraya bağlantı doğrulanmadı.

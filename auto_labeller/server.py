@@ -39,6 +39,7 @@ class Labeller:
         self.last_saved_at = 0.0
         self.result: dict | None = None
         self.error = ""
+        self.device = os.environ.get("AUTO_LABELLER_DEVICE", "")
 
     @staticmethod
     def load_model(model_path: str):
@@ -184,7 +185,7 @@ class Labeller:
                 masked, local_polygon = mask_frame(image, polygon)
                 prediction = model.predict(
                     masked, conf=confidence, classes=selected_classes,
-                    device="cpu", verbose=False,
+                    device=self.device, verbose=False,
                 )[0]
                 if stop_event.is_set():
                     break
