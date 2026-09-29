@@ -24,6 +24,12 @@ Toplanan adayları masaüstünden gözden geçirmek için:
 bash review.sh
 ```
 
+Onaylanan veri setini yeniden gözden geçirmek için:
+
+```bash
+bash review_approved.sh
+```
+
 Arayüz: `http://127.0.0.1:8765`. **Dosya seç** düğmesi cihazın dosya seçicisini açar. Seçilen `.pt` dosyası proje içindeki `models/` klasörüne kopyalanır ve model yolu otomatik doldurulur. Dilerseniz tam dosya yolunu elle de girebilirsiniz. Modeldeki sınıflar otomatik okunur; **Sınıfları göster** ile tekrar yükleyebilirsiniz. İşlenmesini istediğiniz sınıfları işaretleyin. Model cihazda mevcut bir Ultralytics *detection* checkpoint'i olmalı. Örnek çalışan model: `/home/waky/Projeler/ocr_project/models/license-plate-finetune-v1l.pt`. `partCheck/outputs/10091012/best_model.pt` dosyası Ultralytics checkpoint biçiminde değil.
 
 RTSP adresini girip **Kameraya bağlan** düğmesine basın. Önizleme üzerinde çokgen ROI köşelerini sırayla tıklayın; en az üç köşe seçtikten sonra **ROI’yi tamamla** ve **Toplamaya başla** düğmelerine basın. ROI seçilmeden model çıkarımı ve aday toplama başlamaz. ROI’yi yeniden çizmek için **ROI’yi sıfırla** kullanılır.
@@ -38,6 +44,7 @@ RTSP adresini girip **Kameraya bağlan** düğmesine basın. Önizleme üzerinde
 - Masaüstü uygulamasındaki **Yeniden etiketlemeye gönder** düğmesi, adayın JPEG görselini ve tahmin JSON'unu veri setine eklemeden `relabel/` klasörüne taşır. Bu adaylar bekleyen listeden çıkar ve yeniden etiketleme için ayrı tutulur.
 - `E` kısayolu adayı doğrudan yeniden etiketleme kuyruğuna gönderir.
 - `Ctrl+Z`, masaüstü uygulamasındaki son onaylama, reddetme veya yeniden etiketlemeye gönderme işlemini geri alır.
+- `review_approved.sh`, onaylanan `dataset/images/train` görsellerini ve karşılık gelen YOLO etiketlerini açar. Kutunun sınıfını değiştirebilir veya kutuyu etiketten çıkarabilirsin. `Ctrl+S` değişiklikleri ilgili etiket `.txt` dosyasına kaydeder.
 - Masaüstü uygulamasında `A` adayın mevcut düzenlemeleriyle doğrudan onaylanmasını, `R` doğrudan reddedilmesini sağlar. `1`–`9` seçili kutunun sınıfını listedeki aynı sıradaki sınıfa çevirir; örneğin `1` ilk sınıfı, `2` ikinci sınıfı atar.
 - Onaylanan veriler `dataset/images/train`, `dataset/labels/train`, `dataset/classes.txt` ve `dataset/data.yaml` dosyalarında tutulur. Sınıflar model adına göre eşleştirilir; YOLO satırları `class_id x_center y_center width height` biçimindedir. Hiç kutu seçmeden onaylamak boş etiket dosyası oluşturur.
 - Bekleyen adaylar uygulama yeniden başlatıldığında korunur.
