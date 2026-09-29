@@ -31,6 +31,7 @@ class ReviewApp(tk.Tk):
         self.photo: ImageTk.PhotoImage | None = None
         self.image_rect = (0, 0, 1, 1)
         self.selected_index: int | None = None
+        self.undo_action: dict | None = None
         self._build()
         self.bind_all("<Key>", self.handle_shortcut)
         self.refresh_candidates()
@@ -38,7 +39,9 @@ class ReviewApp(tk.Tk):
     def _build(self) -> None:
         top = ttk.Frame(self, padding=(10, 10, 10, 0))
         top.pack(fill=tk.X)
-        ttk.Label(top, text="Kısayollar: A onayla · R reddet · E yeniden etiketle · 1–9 sınıf değiştir.").pack(side=tk.LEFT)
+        ttk.Label(top, text="Kısayollar: A onayla · R reddet · E yeniden etiketle · Ctrl+Z geri al · 1–9 sınıf değiştir.").pack(side=tk.LEFT)
+        self.undo_button = ttk.Button(top, text="Geri al (Ctrl+Z)", command=self.undo_last_action, state=tk.DISABLED)
+        self.undo_button.pack(side=tk.RIGHT, padx=(0, 8))
         ttk.Button(top, text="Listeyi yenile", command=self.refresh_candidates).pack(side=tk.RIGHT)
 
         body = ttk.Panedwindow(self, orient=tk.HORIZONTAL)
@@ -151,6 +154,9 @@ class ReviewApp(tk.Tk):
         if widget_class in {"Entry", "TCombobox"}:
             return None
         key = str(getattr(event, "keysym", "")).lower()
+        if key == "z" and getattr(event, "state", 0) & 0x4:
+            self.undo_last_action()
+            return "break"
         if key == "a":
             self.approve(announce=False)
             return "break"
@@ -270,6 +276,9 @@ class ReviewApp(tk.Tk):
     def approve(self, announce: bool = True) -> None:
         if not self.current:
             return
+        snapshot = self.snapshot_current()
+        if snapshot is None:
+            return
         chosen = [{"class_name": box["class_name"], "xywhn": box["xywhn"]}
                   for box in self.boxes if box["include"]]
         try:
@@ -277,6 +286,7 @@ class ReviewApp(tk.Tk):
         except (OSError, ValueError) as error:
             messagebox.showerror("Onaylanamadı", str(error), parent=self)
             return
+        self.set_undo_action({"kind": "approve", "record": snapshot[0], "image": snapshot[1]})
         if announce:
             messagebox.showinfo("Veri setine eklendi", f"{result['boxes']} kutu onaylandı.", parent=self)
         self.current = None
@@ -287,11 +297,15 @@ class ReviewApp(tk.Tk):
             return
         if confirm and not messagebox.askyesno("Adayı reddet", "Bu aday ve tahminleri silinsin mi?", parent=self):
             return
+        snapshot = self.snapshot_current()
+        if snapshot is None:
+            return
         try:
             self.store.reject(self.current["id"])
         except (OSError, ValueError) as error:
             messagebox.showerror("Reddedilemedi", str(error), parent=self)
             return
+        self.set_undo_action({"kind": "reject", "record": snapshot[0], "image": snapshot[1]})
         self.current = None
         self.refresh_candidates()
 
@@ -299,10 +313,47 @@ class ReviewApp(tk.Tk):
         if not self.current:
             return
         try:
-            self.store.send_for_relabel(self.current["id"])
+            candidate_id = self.current["id"]
+            self.store.send_for_relabel(candidate_id)
         except (OSError, ValueError) as error:
             messagebox.showerror("Taşınamadı", str(error), parent=self)
             return
+        self.set_undo_action({"kind": "relabel", "candidate_id": candidate_id})
+        self.current = None
+        self.refresh_candidates()
+
+    def snapshot_current(self) -> tuple[dict, bytes] | None:
+        if not self.current:
+            return None
+        try:
+            return self.current.copy(), self.store.image(self.current["id"])
+        except (OSError, ValueError) as error:
+            messagebox.showerror("Aday okunamadı", str(error), parent=self)
+            return None
+
+    def set_undo_action(self, action: dict) -> None:
+        self.undo_action = action
+        self.undo_button.config(state=tk.NORMAL)
+
+    def undo_last_action(self) -> None:
+        action = self.undo_action
+        if action is None:
+            self.bell()
+            return
+        try:
+            if action["kind"] == "approve":
+                self.store.undo_approval(action["record"]["id"], action["record"], action["image"])
+            elif action["kind"] == "reject":
+                self.store.restore_pending(action["record"], action["image"])
+            elif action["kind"] == "relabel":
+                self.store.undo_relabel(action["candidate_id"])
+            else:
+                raise ValueError("Bilinmeyen geri alma işlemi")
+        except (OSError, ValueError) as error:
+            messagebox.showerror("Geri alınamadı", str(error), parent=self)
+            return
+        self.undo_action = None
+        self.undo_button.config(state=tk.DISABLED)
         self.current = None
         self.refresh_candidates()
 

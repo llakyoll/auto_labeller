@@ -37,6 +37,7 @@ RTSP adresini girip **Kameraya bağlan** düğmesine basın. Önizleme üzerinde
 - `review.sh` ile açılan masaüstü inceleme uygulaması, her adayın kutularını görüntüler. Sınıflar sabit olarak `nakit` ve `nakit_degil` tanımlıdır. Her kutu için dahil et/çıkar seçimi yapılabilir; yanlış sınıf bu iki sınıftan biriyle değiştirilebilir. **Onayla ve veri setine ekle** yalnızca dahil edilen, güncel sınıflı kutularla YOLO etiketini üretir.
 - Masaüstü uygulamasındaki **Yeniden etiketlemeye gönder** düğmesi, adayın JPEG görselini ve tahmin JSON'unu veri setine eklemeden `relabel/` klasörüne taşır. Bu adaylar bekleyen listeden çıkar ve yeniden etiketleme için ayrı tutulur.
 - `E` kısayolu adayı doğrudan yeniden etiketleme kuyruğuna gönderir.
+- `Ctrl+Z`, masaüstü uygulamasındaki son onaylama, reddetme veya yeniden etiketlemeye gönderme işlemini geri alır.
 - Masaüstü uygulamasında `A` adayın mevcut düzenlemeleriyle doğrudan onaylanmasını, `R` doğrudan reddedilmesini sağlar. `1`–`9` seçili kutunun sınıfını listedeki aynı sıradaki sınıfa çevirir; örneğin `1` ilk sınıfı, `2` ikinci sınıfı atar.
 - Onaylanan veriler `dataset/images/train`, `dataset/labels/train`, `dataset/classes.txt` ve `dataset/data.yaml` dosyalarında tutulur. Sınıflar model adına göre eşleştirilir; YOLO satırları `class_id x_center y_center width height` biçimindedir. Hiç kutu seçmeden onaylamak boş etiket dosyası oluşturur.
 - Bekleyen adaylar uygulama yeniden başlatıldığında korunur.

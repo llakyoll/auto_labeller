@@ -80,6 +80,67 @@ class CandidateStore:
                 raise
             return {"id": candidate_id, "image": str(target_image), "record": str(target_record)}
 
+    def restore_pending(self, record: dict, image: bytes) -> None:
+        """İnceleme uygulamasındaki son reddetme işleminden bir adayı geri getirir."""
+        with self._lock:
+            self._restore_pending_locked(record, image)
+
+    def _restore_pending_locked(self, record: dict, image: bytes) -> None:
+        candidate_id = record.get("id") if isinstance(record, dict) else None
+        self._check_id(candidate_id)
+        if not isinstance(image, bytes):
+            raise ValueError("Aday görseli geçersiz")
+        image_path = self.pending / f"{candidate_id}.jpg"
+        record_path = self.pending / f"{candidate_id}.json"
+        if image_path.exists() or record_path.exists():
+            raise FileExistsError("Aday zaten bekleyen listede")
+        image_path.write_bytes(image)
+        try:
+            record_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+        except OSError:
+            image_path.unlink(missing_ok=True)
+            raise
+
+    def undo_approval(self, candidate_id: str, record: dict, image: bytes) -> None:
+        """Son onaylamayı geri alır; sınıf listesini korur ki eski etiketler bozulmasın."""
+        self._check_id(candidate_id)
+        with self._lock:
+            image_path = self.dataset / "images" / "train" / f"{candidate_id}.jpg"
+            label_path = self.dataset / "labels" / "train" / f"{candidate_id}.txt"
+            if not image_path.is_file() or not label_path.is_file():
+                raise FileNotFoundError("Onaylanan aday dosyaları bulunamadı")
+            pending_image = self.pending / f"{candidate_id}.jpg"
+            pending_record = self.pending / f"{candidate_id}.json"
+            if pending_image.exists() or pending_record.exists():
+                raise FileExistsError("Aday zaten bekleyen listede")
+            self._restore_pending_locked(record, image)
+            try:
+                image_path.unlink()
+                label_path.unlink()
+            except OSError:
+                pending_image.unlink(missing_ok=True)
+                pending_record.unlink(missing_ok=True)
+                raise
+
+    def undo_relabel(self, candidate_id: str) -> None:
+        """Son yeniden etiketleme taşımasını bekleyen adaylara geri alır."""
+        self._check_id(candidate_id)
+        with self._lock:
+            source_image = self.relabel_dir / f"{candidate_id}.jpg"
+            source_record = self.relabel_dir / f"{candidate_id}.json"
+            target_image = self.pending / source_image.name
+            target_record = self.pending / source_record.name
+            if not source_image.is_file() or not source_record.is_file():
+                raise FileNotFoundError("Yeniden etiketleme dosyaları bulunamadı")
+            if target_image.exists() or target_record.exists():
+                raise FileExistsError("Aday zaten bekleyen listede")
+            os.replace(source_image, target_image)
+            try:
+                os.replace(source_record, target_record)
+            except OSError:
+                os.replace(target_image, source_image)
+                raise
+
     def approve(self, candidate_id: str, selected: list[int]) -> dict:
         self._check_id(candidate_id)
         with self._lock:
