@@ -13,6 +13,7 @@ from .storage import CandidateStore
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CLASS_NAMES = ("nakit", "nakit_degil")
 
 
 class ReviewApp(tk.Tk):
@@ -78,7 +79,7 @@ class ReviewApp(tk.Tk):
 
         ttk.Label(right, text="Seçili kutunun sınıfı").pack(anchor=tk.W)
         self.class_var = tk.StringVar()
-        self.class_combo = ttk.Combobox(right, textvariable=self.class_var)
+        self.class_combo = ttk.Combobox(right, textvariable=self.class_var, state="readonly")
         self.class_combo.pack(fill=tk.X, pady=(4, 6))
         ttk.Button(right, text="Sınıfı uygula", command=self.apply_class).pack(fill=tk.X)
         ttk.Label(right, text="İpucu: 'Dahil' sütununa tıklayarak kutuyu çıkarabilir, görselde kutuya tıklayarak seçebilirsin. 1–9, listedeki sınıf sırasını kullanır.",
@@ -136,28 +137,12 @@ class ReviewApp(tk.Tk):
              "confidence": float(box.get("confidence", 0)), "xywhn": list(box["xywhn"])}
             for box in record["detections"]
         ]
-        self.class_names = self.available_classes(record)
+        self.class_names = list(CLASS_NAMES)
         self.class_combo["values"] = self.class_names
         self.selected_index = None
         self.update_box_tree()
         self.draw_image()
         self.image_info.config(text=f"{image.width} × {image.height} px · {len(self.boxes)} kutu · {candidate['id']}")
-
-    def available_classes(self, record: dict) -> list[str]:
-        names: list[str] = []
-        model_path = Path(str(record.get("model", "")))
-        if model_path.is_file():
-            try:
-                from ultralytics import YOLO
-                model = YOLO(str(model_path))
-                names.extend(str(name) for _, name in sorted(model.names.items()))
-            except Exception:
-                pass
-        classes_file = self.store.dataset / "classes.txt"
-        if classes_file.exists():
-            names.extend(name for name in classes_file.read_text(encoding="utf-8").splitlines() if name)
-        names.extend(str(box["class_name"]) for box in record.get("detections", []))
-        return list(dict.fromkeys(names))
 
     def handle_shortcut(self, event) -> str | None:
         """Text entry fields keep their own keystrokes; the review surface gets shortcuts."""
@@ -219,14 +204,11 @@ class ReviewApp(tk.Tk):
             messagebox.showinfo("Kutu seç", "Önce listeden veya görselden bir kutu seç.", parent=self)
             return
         name = self.class_var.get().strip()
-        if not name:
-            messagebox.showerror("Sınıf boş", "Bir sınıf adı gir veya listeden seç.", parent=self)
+        if name not in CLASS_NAMES:
+            messagebox.showerror("Geçersiz sınıf", "Yalnızca nakit veya nakit_degil seçilebilir.", parent=self)
             return
         self.boxes[self.selected_index]["class_name"] = name
         self.boxes[self.selected_index]["include"] = True
-        if name not in self.class_names:
-            self.class_names.append(name)
-            self.class_combo["values"] = self.class_names
         self.update_box_tree()
         self.draw_image()
 
